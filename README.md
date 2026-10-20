@@ -1,61 +1,52 @@
-# Diabetes Classification: model comparison (ML lab mini project)
+# Diabetes Classification (ML lab mini project)
 
-Binary classification on the Pima Indians Diabetes dataset. Five models are written
-from scratch with NumPy: logistic regression, KNN, decision tree, random forest, plus
-the metrics, preprocessing and cross-validation engine. scikit-learn appears in exactly
-one file, `ml/bench.py`, as a clearly labelled "library benchmark" (RF and RBF-SVM).
-It is never presented as our implementation. Educational demo, not a medical diagnosis.
+Binary classification on the Pima Indians Diabetes dataset (768 rows, 8 numeric features).
+Three scikit-learn algorithms are compared: **Logistic Regression, KNN and Decision Tree**.
+Educational demo, not a medical diagnosis.
 
 ## Run
 
-1. `diabetes.csv` in this folder. Columns: Pregnancies, Glucose, BloodPressure,
-   SkinThickness, Insulin, BMI, DiabetesPedigreeFunction, Age, Outcome.
-2. `python -m pip install -r requirements.txt`
-3. `python tests.py`     13 sanity tests (gradient check, hand-checked tree/KNN/metrics, CV leakage)
-4. `python train.py --balanced`   trains the logistic regression the Predict page uses -> model.npz
-5. `python compare.py`   5-fold CV + held-out test for all models -> results.json (~15 s)
-6. `streamlit run app.py`
+```
+python -m pip install -r requirements.txt
+python model.py          # trains the 3 models and prints the results
+streamlit run app.py     # opens the web app at http://localhost:8501
+```
 
-## Layout
+## Files
 
-| File | What |
+| File | What it does |
 |---|---|
-| `ml/logreg.py` | sigmoid, log-loss, gradient descent |
-| `ml/knn.py` | k-nearest neighbours |
-| `ml/tree.py` | CART decision tree (Gini), feature importances, text export |
-| `ml/forest.py` | random forest: bootstrap + random feature subsets |
-| `ml/metrics.py` | confusion matrix, precision, recall, F1, ROC, AUC |
-| `ml/preprocess.py` | CSV load, zero-as-missing imputation, scaler, stratified split |
-| `ml/cv.py` | stratified k-fold, preprocessing refit inside each fold |
-| `ml/bench.py` | scikit-learn RF + SVM (benchmark only) |
-| `train.py`, `compare.py`, `app.py`, `tests.py` | scripts, UI, tests |
+| `model.py` | All the machine learning (scikit-learn): data loading, Pipeline, tuning, evaluation |
+| `app.py` | Streamlit web app: Home, Data exploration, Predict, Model comparison, About the models |
+| `diabetes.csv` | The dataset |
+| `requirements.txt` | Libraries (Streamlit Cloud reads this) |
+| `docs/` | Study guide (theory) and code walkthrough, for viva preparation |
 
-## Evaluation protocol (say this in the viva)
+## Method
 
-1. Stratified 80/20 split; the 20% test set is not touched until the end.
-2. Stratified 5-fold CV on the 80%. Median imputation and scaling are fitted on the training
-   part of each fold only (no leakage).
-3. KNN's k and the tree/forest depth are chosen by mean CV F1.
-4. Refit on the full 80%, score once on the test set.
+1. Stratified 80/20 split: 614 training rows, 154 test rows (`train_test_split`, `stratify=y`).
+2. One `Pipeline` for every model: `SimpleImputer` (median, for the hidden zeros) then `StandardScaler` then the model.
+   A pipeline re-learns the medians and scaling from the training rows only, so nothing leaks.
+3. `GridSearchCV` with `StratifiedKFold(5)` tries a few settings per model (class weights, k, tree depth)
+   and keeps the best mean F1.
+4. The test set is scored once at the end.
 
-Honest reading of the results: all models land at roughly 74-76% CV accuracy and every model's
-mean F1 is within one std of the best. The gaps are smaller than fold-to-fold noise, so the
-right claim is "comparable", not "X is best". Hyper-parameters were tuned on the same folds
-that are reported, so CV numbers are slightly optimistic; the test set is the unbiased check.
+## Results (from `python model.py`)
 
-## Suggested split for a group of 3
+| Model | Best setting | CV F1 | CV recall | CV ROC-AUC | Test accuracy |
+|---|---|---|---|---|---|
+| Logistic Regression | class_weight=balanced | 0.672 +/- 0.013 | 0.701 | 0.844 | 0.734 |
+| KNN | k = 15 | 0.632 +/- 0.048 | 0.571 | 0.832 | 0.740 |
+| Decision Tree | max_depth = 5 | 0.573 +/- 0.066 | 0.537 | 0.765 | 0.773 |
 
-- Member A: logistic regression, metrics, preprocessing, Streamlit app
-- Member B: KNN, cross-validation engine, comparison script
-- Member C: decision tree, random forest, tests
-
-Everyone should still be able to explain the whole pipeline: viva questions can go anywhere.
+Reading it honestly: Logistic Regression has the best cross-validated F1 and recall; KNN is comparable;
+the tree is behind in CV even though it happens to score best on the small 154-row test set (luck).
+Always predicting "no diabetes" would give 65.1% accuracy, so accuracy alone is not enough.
 
 ## Viva cheat sheet
 
-- Why standardise? KNN is distance-based and gradient descent converges faster.
-- Why impute inside each fold? Otherwise validation data influences the training statistics.
-- Gini impurity? 2p(1-p). The tree picks the split with the largest impurity decrease.
-- Why does a forest beat a single tree? Bagging averages out the variance of deep trees.
-- Why recall? A missed diabetic case (false negative) costs more than a false alarm.
-- Gradient: dJ/dw = X^T (p - y) / n.
+- Why scale? KNN uses distances; logistic regression trains better.
+- Why a Pipeline? It prevents data leakage (the median and scaling never see validation or test rows).
+- Why recall? A missed diabetic case costs more than a false alarm.
+- Why cross-validation? One split depends on luck; 5 folds give a mean and a spread.
+- Why is the tree's test score higher but we do not call it best? The test set has only 154 rows (about +/-3.5 points).
